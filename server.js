@@ -1,16 +1,53 @@
-const express = require('express');
-const cors    = require('cors');
-const crypto  = require('crypto');
+const express   = require('express');
+const cors      = require('cors');
+const crypto    = require('crypto');
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-app.use(express.json());
 
-// Allow requests from your Vercel frontend (set FRONTEND_URL in Render env vars)
+// Security headers
+app.use(helmet());
+
+// JSON body parsing (limit size to prevent payload attacks)
+app.use(express.json({ limit: '10kb' }));
+
+// Allow requests only from your Vercel frontend
 app.use(cors({
     origin: process.env.FRONTEND_URL || '*',
     methods: ['GET', 'POST', 'PATCH']
 }));
+
+// Rate limiters
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' }
+});
+
+const createLinkLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many links created, please try again in an hour.' }
+});
+
+app.use(generalLimiter);
+
+// Admin key middleware for protected endpoints
+function requireAdminKey(req, res, next) {
+    const key = req.headers['x-admin-key'];
+    if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY)
+        return res.status(401).json({ error: 'Unauthorized' });
+    next();
+}
+
+// Token format validator (32 hex chars only)
+const HEX_32 = /^[0-9a-f]{32}$/;
 
 // Supabase client — set SUPABASE_URL and SUPABASE_ANON_KEY in Render env vars
 const supabase = createClient(
@@ -21,14 +58,17 @@ const supabase = createClient(
 // ── POST /api/create-link ──────────────────────────────────────────
 // Body: { amount: 150, ref: "INV-001" }
 // Returns: { token: "abc123", url: "https://yoursite.vercel.app/payment.html?token=abc123" }
-app.post('/api/create-link', async (req, res) => {
+app.post('/api/create-link', createLinkLimiter, async (req, res) => {
     const { amount, ref } = req.body;
 
     if (!amount || !ref)
         return res.status(400).json({ error: 'amount and ref are required' });
 
+    if (typeof ref !== 'string' || ref.length > 100)
+        return res.status(400).json({ error: 'Invalid reference' });
+
     const parsed = parseFloat(amount);
-    if (isNaN(parsed) || parsed <= 0)
+    if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
         return res.status(400).json({ error: 'Invalid amount' });
 
     const token      = crypto.randomBytes(16).toString('hex');
@@ -53,7 +93,7 @@ app.post('/api/create-link', async (req, res) => {
 app.get('/api/link/:token', async (req, res) => {
     const { token } = req.params;
 
-    if (!token || token.length !== 32)
+    if (!HEX_32.test(token))
         return res.status(400).json({ error: 'Invalid token' });
 
     const { data, error } = await supabase
@@ -80,8 +120,8 @@ app.get('/api/link/:token', async (req, res) => {
 });
 
 // ── GET /api/links ─────────────────────────────────────────────────
-// Admin: list all generated links
-app.get('/api/links', async (req, res) => {
+// Admin: list all generated links (requires X-Admin-Key header)
+app.get('/api/links', requireAdminKey, async (req, res) => {
     const { data, error } = await supabase
         .from('payment_links')
         .select('id, token, amount, ref, created_at, expires_at, used, used_at')
@@ -95,6 +135,9 @@ app.get('/api/links', async (req, res) => {
 // Mark a link as used after payment is confirmed
 app.patch('/api/link/:token/use', async (req, res) => {
     const { token } = req.params;
+
+    if (!HEX_32.test(token))
+        return res.status(400).json({ error: 'Invalid token' });
 
     const { data, error } = await supabase
         .from('payment_links')
