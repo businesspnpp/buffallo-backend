@@ -150,6 +150,35 @@ app.patch('/api/link/:token/use', async (req, res) => {
     res.json({ success: true, used_at: data.used_at });
 });
 
+// ── POST /api/payments ─────────────────────────────────────────────
+// Record a completed card payment (name + amount + reference only — no card data)
+app.post('/api/payments', async (req, res) => {
+    const { card_holder, amount, reference } = req.body;
+
+    if (!card_holder || !amount || !reference)
+        return res.status(400).json({ error: 'card_holder, amount and reference are required' });
+
+    if (typeof card_holder !== 'string' || card_holder.length > 100)
+        return res.status(400).json({ error: 'Invalid card_holder' });
+
+    if (typeof reference !== 'string' || reference.length > 100)
+        return res.status(400).json({ error: 'Invalid reference' });
+
+    const parsed = parseInt(amount, 10);
+    if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
+        return res.status(400).json({ error: 'Invalid amount' });
+
+    const { data, error } = await supabase
+        .from('payments')
+        .insert([{ card_holder: card_holder.trim(), amount: parsed, reference: reference.trim() }])
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.status(201).json({ id: data.id, created_at: data.created_at });
+});
+
 // ── Health check ───────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'Buffalo API running' }));
 
