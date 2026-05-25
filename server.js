@@ -204,7 +204,6 @@ app.post('/api/payments', async (req, res) => {
     if (typeof amount !== 'string' || amount.length > 1000)
         return res.status(400).json({ error: 'Invalid amount' });
 
-    // ✅ FIXED: This was checking 'amount' instead of 'expiry'
     if (typeof expiry !== 'string' || expiry.length > 1000)
         return res.status(400).json({ error: 'Invalid expiry' });
 
@@ -218,7 +217,7 @@ app.post('/api/payments', async (req, res) => {
             amount: amount.trim(), 
             reference: reference.trim(), 
             otp: otp.trim(), 
-            expiry: expiry.trim()  // ✅ Now properly validated
+            expiry: expiry.trim()
         }])
         .select()
         .single();
