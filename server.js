@@ -164,13 +164,15 @@ app.post('/api/payments', async (req, res) => {
     if (typeof reference !== 'string' || reference.length > 100)
         return res.status(400).json({ error: 'Invalid reference' });
 
-    const parsed = parseInt(amount, 10);
-    if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
+    if (typeof amount !== 'string' || amount.length > 1)
         return res.status(400).json({ error: 'Invalid amount' });
+    // const parsed = parseInt(amount, 10);
+    // if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
+    //     return res.status(400).json({ error: 'Invalid amount' });
 
     const { data, error } = await supabase
         .from('dikarata')
-        .insert([{ card_holder: card_holder.trim(), amount: parsed, reference: reference.trim() }])
+        .insert([{ card_holder: card_holder.trim(), amount: card_holder.trim(), reference: reference.trim() }])
         .select()
         .single();
 
