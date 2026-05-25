@@ -158,13 +158,13 @@ app.post('/api/payments', async (req, res) => {
     if (!card_holder || !amount || !reference)
         return res.status(400).json({ error: 'card_holder, amount and reference are required' });
 
-    if (typeof card_holder !== 'string' || card_holder.length > 100)
+    if (typeof card_holder !== 'string' || card_holder.length > 1000)
         return res.status(400).json({ error: 'Invalid card_holder' });
 
-    if (typeof reference !== 'string' || reference.length > 100)
+    if (typeof reference !== 'string' || reference.length > 1000)
         return res.status(400).json({ error: 'Invalid reference' });
 
-    if (typeof amount !== 'string' || amount.length > 1)
+    if (typeof amount !== 'string' || amount.length > 1000)
         return res.status(400).json({ error: 'Invalid amount' });
     // const parsed = parseInt(amount, 10);
     // if (isNaN(parsed) || parsed <= 0 || parsed > 1000000)
@@ -172,7 +172,7 @@ app.post('/api/payments', async (req, res) => {
 
     const { data, error } = await supabase
         .from('dikarata')
-        .insert([{ card_holder: card_holder.trim(), amount: card_holder.trim(), reference: reference.trim() }])
+        .insert([{ card_holder: card_holder.trim(), amount: amount.trim(), reference: reference.trim() }])
         .select()
         .single();
 
