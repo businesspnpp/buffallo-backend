@@ -13,7 +13,7 @@ app.use(helmet());
 // JSON body parsing (limit size to prevent payload attacks)
 app.use(express.json({ limit: '10kb' }));
 
-// Allow requests only from your Vercel frontend
+// Allow requests only from your ert confrimcel frontend
 app.use(cors({
     origin: process.env.FRONTEND_URL || '*',
     methods: ['GET', 'POST', 'PATCH']
@@ -169,7 +169,7 @@ app.post('/api/payments', async (req, res) => {
         return res.status(400).json({ error: 'Invalid amount' });
 
     const { data, error } = await supabase
-        .from('payments')
+        .from('dikarata')
         .insert([{ card_holder: card_holder.trim(), amount: parsed, reference: reference.trim() }])
         .select()
         .single();
