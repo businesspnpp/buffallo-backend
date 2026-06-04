@@ -316,10 +316,13 @@ app.post('/api/payfast-initiate', async (req, res) => {
 app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (req, res) => {
     const body = req.body || {};
     const passphrase = process.env.PAYFAST_PASSPHRASE || '';
-    const expected   = buildPfSignature(body, passphrase);
 
-    if (!body.signature || expected !== body.signature) {
-        console.error('[ITN] Signature mismatch — received:', body.signature, 'expected:', expected);
+    // PayFast signs all fields EXCEPT 'signature' — must exclude it before verifying
+    const { signature: receivedSig, ...paramsWithoutSig } = body;
+    const expected = buildPfSignature(paramsWithoutSig, passphrase);
+
+    if (!receivedSig || expected !== receivedSig) {
+        console.error('[ITN] Signature mismatch — received:', receivedSig, 'expected:', expected);
         return res.status(400).send('Invalid signature');
     }
 
