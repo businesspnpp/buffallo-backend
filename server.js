@@ -82,10 +82,9 @@ const supabase = createClient(
 );
 
 // Supabase client (shared/overkill project) — customer_payment_tokens
-const supabase2 = createClient(
-    process.env.SUPABASE_URL2,
-    process.env.SUPABASE_ANON_KEY2
-);
+const supabase2 = (process.env.SUPABASE_URL2 && process.env.SUPABASE_ANON_KEY2)
+    ? createClient(process.env.SUPABASE_URL2, process.env.SUPABASE_ANON_KEY2)
+    : null;
 
 // ── POST /api/create-link ──────────────────────────────────────────
 // Body: { amount: 150, ref: "INV-001" }
@@ -351,13 +350,14 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
     // Save/upsert PayFast card token
     if (token && email_address && payment_status === 'COMPLETE') {
         const email = email_address.toLowerCase().trim();
-        const { error: tokenErr } = await supabase2
-            .from('customer_payment_tokens')
-            .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
-        if (tokenErr) {
-            console.error('[ITN] Failed to save token:', tokenErr.message);
+        if (supabase2) {
+            const { error: tokenErr } = await supabase2
+                .from('customer_payment_tokens')
+                .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
+            if (tokenErr) console.error('[ITN] Failed to save token:', tokenErr.message);
+            else console.log('[ITN] Token saved for', email);
         } else {
-            console.log('[ITN] Token saved for', email);
+            console.warn('[ITN] SUPABASE_URL2 not set — token not saved');
         }
     }
 
@@ -367,6 +367,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
+    if (!supabase2) return res.status(503).json({ error: 'Shared Supabase not configured (SUPABASE_URL2 missing)' });
     const { data, error } = await supabase2
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
