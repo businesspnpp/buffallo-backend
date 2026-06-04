@@ -401,7 +401,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
-    const { data, error } = await supabase2
+    const { data, error } = await supabase
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
         .order('created_at', { ascending: false });
@@ -421,7 +421,7 @@ app.post('/api/payfast-charge', requireAdminKey, async (req, res) => {
     if (isNaN(parsed) || parsed <= 0)
         return res.status(400).json({ error: 'Invalid amount' });
 
-    const { data: rows, error } = await supabase2
+    const { data: rows, error } = await supabase
         .from('customer_payment_tokens')
         .select('payfast_token, email')
         .eq('id', token_id)
