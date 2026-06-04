@@ -13,3 +13,15 @@ CREATE TABLE payment_links (
 
 -- Index for fast token lookup
 CREATE INDEX idx_payment_links_token ON payment_links(token);
+
+-- PayFast card tokens (saved for recurring/adhoc charges)
+CREATE TABLE customer_payment_tokens (
+    id            UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+    email         TEXT        UNIQUE NOT NULL,
+    payfast_token TEXT        NOT NULL,
+    is_default    BOOLEAN     DEFAULT TRUE,
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_cpt_email ON customer_payment_tokens(email);
