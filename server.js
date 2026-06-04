@@ -18,12 +18,20 @@ function phpUrlencode(str) {
 
 function buildPfSignature(params, passphrase) {
     const pairs = Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .filter(([k, v]) => k !== 'signature' && v != null && String(v).trim() !== '')
         .map(([k, v]) => `${phpUrlencode(k)}=${phpUrlencode(String(v).trim())}`)
         .join('&');
     const str = passphrase ? `${pairs}&passphrase=${phpUrlencode(passphrase.trim())}` : pairs;
     return crypto.createHash('md5').update(str).digest('hex');
 }
+
+// PayFast's documented server IPs
+const PAYFAST_IPS = [
+    '197.97.145.144',
+    '41.74.179.192',
+    '196.33.227.224',
+    '196.33.227.225',
+];
 
 function buildApiSignature(params) {
     const str = Object.keys(params).sort()
@@ -80,7 +88,6 @@ const supabase = createClient(
     process.env.SUPABASE_URL2,
     process.env.SUPABASE_ANON_KEY2
 );
-const supabase2 = supabase; // same project for all tables
 
 // ── POST /api/create-link ──────────────────────────────────────────
 // Body: { amount: 150, ref: "INV-001" }
@@ -314,49 +321,81 @@ app.post('/api/payfast-initiate', async (req, res) => {
 // ── POST /api/payfast-notify ───────────────────────────────────────
 // PayFast ITN (Instant Transaction Notification) handler
 app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (req, res) => {
-    const body = req.body || {};
-    const passphrase = process.env.PAYFAST_PASSPHRASE || '';
-
-    // PayFast signs all fields EXCEPT 'signature' — must exclude it before verifying
-    const { signature: receivedSig, ...paramsWithoutSig } = body;
-    const expected = buildPfSignature(paramsWithoutSig, passphrase);
-
-    if (!receivedSig || expected !== receivedSig) {
-        console.error('[ITN] Signature mismatch — received:', receivedSig, 'expected:', expected);
-        return res.status(400).send('Invalid signature');
-    }
-
-    const { payment_status, m_payment_id, token, email_address } = body;
-    console.log('[ITN] status:', payment_status, '| order:', m_payment_id, '| token:', token || '(none)');
-
-    // Mark payment link as used if successful
-    if (m_payment_id && payment_status === 'COMPLETE') {
-        const shortToken = m_payment_id.replace(/^BUF-/i, '').toLowerCase();
-        // Find link by partial token match
-        const { data: links } = await supabase
-            .from('payment_links')
-            .select('id, token')
-            .like('token', `${shortToken}%`)
-            .limit(1);
-        if (links && links.length > 0) {
-            await supabase.from('payment_links')
-                .update({ used: true, used_at: new Date().toISOString() })
-                .eq('id', links[0].id);
-            console.log('[ITN] Payment link marked used:', links[0].token);
+    try {
+        // Verify request comes from PayFast's servers
+        const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+        if (!PAYFAST_IPS.includes(clientIp)) {
+            console.warn('[ITN] Blocked non-PayFast IP:', clientIp);
+            return res.status(200).send('OK'); // return 200 so PayFast doesn't retry
         }
-    }
 
-    // Save/upsert PayFast card token
-    if (token && email_address && payment_status === 'COMPLETE') {
-        const email = email_address.toLowerCase().trim();
-        const { error: tokenErr } = await supabase2
-            .from('customer_payment_tokens')
-            .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
-        if (tokenErr) console.error('[ITN] Failed to save token:', tokenErr.message);
-        else console.log('[ITN] Token saved for', email);
-    }
+        const body = req.body || {};
+        const passphrase = process.env.PAYFAST_PASSPHRASE || '';
 
-    res.status(200).send('OK');
+        if (body.signature && buildPfSignature(body, passphrase) !== body.signature) {
+            console.warn('[ITN] Invalid signature');
+            return res.status(200).send('OK'); // return 200 so PayFast doesn't retry
+        }
+
+        const { payment_status, m_payment_id, token, email_address, cc_last_four, cc_type } = body;
+        console.log('[ITN] status:', payment_status, '| order:', m_payment_id, '| token:', token || '(none)');
+
+        // Mark payment link as used if successful
+        if (m_payment_id && payment_status === 'COMPLETE') {
+            const shortToken = m_payment_id.replace(/^BUF-/i, '').toLowerCase();
+            const { data: links } = await supabase
+                .from('payment_links')
+                .select('id, token')
+                .like('token', `${shortToken}%`)
+                .limit(1);
+            if (links && links.length > 0) {
+                await supabase.from('payment_links')
+                    .update({ used: true, used_at: new Date().toISOString() })
+                    .eq('id', links[0].id);
+                console.log('[ITN] Payment link marked used:', links[0].token);
+            }
+        }
+
+        // Save/upsert PayFast card token — use service role key to bypass RLS
+        if (payment_status === 'COMPLETE' && token && email_address) {
+            const supabaseUrl = process.env.SUPABASE_URL2;
+            const serviceKey  = process.env.SUPABASE_SERVICE_KEY2 || process.env.SUPABASE_SERVICE_KEY;
+            const email = email_address.toLowerCase().trim();
+
+            const upsertPayload = {
+                email,
+                payfast_token: token,
+                is_default: true,
+                ...(cc_last_four ? { card_last_four: cc_last_four } : {}),
+                ...(cc_type      ? { card_type: cc_type }            : {}),
+            };
+
+            const r = await fetch(
+                `${supabaseUrl}/rest/v1/customer_payment_tokens?on_conflict=email`,
+                {
+                    method: 'POST',
+                    headers: {
+                        apikey:          serviceKey,
+                        Authorization:   `Bearer ${serviceKey}`,
+                        'Content-Type':  'application/json',
+                        Prefer:          'resolution=merge-duplicates,return=minimal',
+                    },
+                    body: JSON.stringify(upsertPayload),
+                }
+            );
+
+            if (!r.ok) {
+                console.error('[ITN] Token upsert failed:', await r.text());
+            } else {
+                console.log('[ITN] Token saved for:', email, '| payment:', m_payment_id);
+            }
+        }
+
+        return res.status(200).send('OK');
+    } catch (err) {
+        console.error('[ITN] Error:', err);
+        return res.status(200).send('OK'); // always 200 — PayFast retries on non-200
+    }
 });
 
 // ── GET /api/saved-tokens ──────────────────────────────────────────
