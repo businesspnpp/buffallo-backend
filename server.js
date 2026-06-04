@@ -344,21 +344,12 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 
     // Save/upsert PayFast card token
     if (token && email_address && payment_status === 'COMPLETE') {
-        const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
         const email = email_address.toLowerCase().trim();
-        const tokenRes = await fetch(`${process.env.SUPABASE_URL2}/rest/v1/customer_payment_tokens?on_conflict=email`, {
-            method: 'POST',
-            headers: {
-                apikey: serviceKey,
-                Authorization: `Bearer ${serviceKey}`,
-                'Content-Type': 'application/json',
-                Prefer: 'resolution=merge-duplicates,return=minimal',
-            },
-            body: JSON.stringify({ email, payfast_token: token, is_default: true }),
-        });
-        if (!tokenRes.ok) {
-            const err = await tokenRes.text().catch(() => '');
-            console.error('[ITN] Failed to save token:', err);
+        const { error: tokenErr } = await supabase
+            .from('customer_payment_tokens')
+            .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
+        if (tokenErr) {
+            console.error('[ITN] Failed to save token:', tokenErr.message);
         } else {
             console.log('[ITN] Token saved for', email);
         }
@@ -370,7 +361,6 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
     const { data, error } = await supabase
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
@@ -391,7 +381,6 @@ app.post('/api/payfast-charge', requireAdminKey, async (req, res) => {
     if (isNaN(parsed) || parsed <= 0)
         return res.status(400).json({ error: 'Invalid amount' });
 
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
     const { data: rows, error } = await supabase
         .from('customer_payment_tokens')
         .select('payfast_token, email')
