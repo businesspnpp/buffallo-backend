@@ -75,10 +75,10 @@ function requireAdminKey(req, res, next) {
 // Token format validator (32 hex chars only)
 const HEX_32 = /^[0-9a-f]{32}$/;
 
-// Supabase client — set SUPABASE_URL and SUPABASE_ANON_KEY in Render env vars
+// Supabase client — set SUPABASE_URL2 and SUPABASE_ANON_KEY2 in Render env vars
 const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_URL2,
+    process.env.SUPABASE_ANON_KEY2
 );
 
 // ── POST /api/create-link ──────────────────────────────────────────
@@ -344,9 +344,9 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 
     // Save/upsert PayFast card token
     if (token && email_address && payment_status === 'COMPLETE') {
-        const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+        const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
         const email = email_address.toLowerCase().trim();
-        const tokenRes = await fetch(`${process.env.SUPABASE_URL}/rest/v1/customer_payment_tokens?on_conflict=email`, {
+        const tokenRes = await fetch(`${process.env.SUPABASE_URL2}/rest/v1/customer_payment_tokens?on_conflict=email`, {
             method: 'POST',
             headers: {
                 apikey: serviceKey,
@@ -370,7 +370,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
     const { data, error } = await supabase
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
@@ -391,7 +391,7 @@ app.post('/api/payfast-charge', requireAdminKey, async (req, res) => {
     if (isNaN(parsed) || parsed <= 0)
         return res.status(400).json({ error: 'Invalid amount' });
 
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY2;
     const { data: rows, error } = await supabase
         .from('customer_payment_tokens')
         .select('payfast_token, email')
