@@ -372,7 +372,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 
         // Save/upsert PayFast card token — same project/table as Overkill
         if (payment_status === 'COMPLETE' && token && email_address) {
-            const supabaseUrl = process.env.SUPABASE_URL;
+            const supabaseUrl = process.env.SUPABASE_URL2;
             const serviceKey  = process.env.SUPABASE_SERVICE_KEY;
             const email = email_address.toLowerCase().trim();
 
