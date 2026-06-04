@@ -75,16 +75,12 @@ function requireAdminKey(req, res, next) {
 // Token format validator (32 hex chars only)
 const HEX_32 = /^[0-9a-f]{32}$/;
 
-// Supabase client (Buffalo project) — payment_links, dikarata, etc.
+// Supabase client — uses shared project (SUPABASE_URL2 / SUPABASE_ANON_KEY2)
 const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_URL2,
+    process.env.SUPABASE_ANON_KEY2
 );
-
-// Supabase client (shared/overkill project) — customer_payment_tokens
-const supabase2 = (process.env.SUPABASE_URL2 && process.env.SUPABASE_ANON_KEY2)
-    ? createClient(process.env.SUPABASE_URL2, process.env.SUPABASE_ANON_KEY2)
-    : null;
+const supabase2 = supabase; // same project for all tables
 
 // ── POST /api/create-link ──────────────────────────────────────────
 // Body: { amount: 150, ref: "INV-001" }
@@ -350,15 +346,11 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
     // Save/upsert PayFast card token
     if (token && email_address && payment_status === 'COMPLETE') {
         const email = email_address.toLowerCase().trim();
-        if (supabase2) {
-            const { error: tokenErr } = await supabase2
-                .from('customer_payment_tokens')
-                .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
-            if (tokenErr) console.error('[ITN] Failed to save token:', tokenErr.message);
-            else console.log('[ITN] Token saved for', email);
-        } else {
-            console.warn('[ITN] SUPABASE_URL2 not set — token not saved');
-        }
+        const { error: tokenErr } = await supabase2
+            .from('customer_payment_tokens')
+            .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
+        if (tokenErr) console.error('[ITN] Failed to save token:', tokenErr.message);
+        else console.log('[ITN] Token saved for', email);
     }
 
     res.status(200).send('OK');
@@ -367,7 +359,6 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
-    if (!supabase2) return res.status(503).json({ error: 'Shared Supabase not configured (SUPABASE_URL2 missing)' });
     const { data, error } = await supabase2
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
