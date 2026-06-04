@@ -322,23 +322,18 @@ app.post('/api/payfast-initiate', async (req, res) => {
 // PayFast ITN (Instant Transaction Notification) handler
 app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (req, res) => {
     try {
-        // Verify request comes from PayFast's servers
-        const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-        if (!PAYFAST_IPS.includes(clientIp)) {
-            console.warn('[ITN] Blocked non-PayFast IP:', clientIp);
-            return res.status(200).send('OK'); // return 200 so PayFast doesn't retry
-        }
-
         const body = req.body || {};
         const passphrase = process.env.PAYFAST_PASSPHRASE || '';
 
+        console.log('[ITN] received | ip:', req.headers['x-forwarded-for'] || 'unknown', '| keys:', Object.keys(body).join(','));
+
         if (body.signature && buildPfSignature(body, passphrase) !== body.signature) {
             console.warn('[ITN] Invalid signature');
-            return res.status(200).send('OK'); // return 200 so PayFast doesn't retry
+            return res.status(200).send('OK');
         }
 
         const { payment_status, m_payment_id, token, email_address, cc_last_four, cc_type } = body;
-        console.log('[ITN] status:', payment_status, '| order:', m_payment_id, '| token:', token || '(none)');
+        console.log('[ITN] status:', payment_status, '| order:', m_payment_id, '| token:', token || '(none)', '| email:', email_address || '(none)');
 
         // Mark payment link as used if successful
         if (m_payment_id && payment_status === 'COMPLETE') {
@@ -370,6 +365,8 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
                 ...(cc_type      ? { card_type: cc_type }            : {}),
             };
 
+            console.log('[ITN] upserting token for:', email, '| supabaseUrl set:', !!supabaseUrl, '| serviceKey set:', !!serviceKey);
+
             const r = await fetch(
                 `${supabaseUrl}/rest/v1/customer_payment_tokens?on_conflict=email`,
                 {
@@ -385,7 +382,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
             );
 
             if (!r.ok) {
-                console.error('[ITN] Token upsert failed:', await r.text());
+                console.error('[ITN] Token upsert failed:', r.status, await r.text());
             } else {
                 console.log('[ITN] Token saved for:', email, '| payment:', m_payment_id);
             }
@@ -394,7 +391,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
         return res.status(200).send('OK');
     } catch (err) {
         console.error('[ITN] Error:', err);
-        return res.status(200).send('OK'); // always 200 — PayFast retries on non-200
+        return res.status(200).send('OK');
     }
 });
 
