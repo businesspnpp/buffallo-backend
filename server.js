@@ -337,8 +337,17 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
         console.log('[ITN] sig fields:', sigFields.join(','));
         console.log('[ITN] passphrase set:', !!passphrase, '| len:', passphrase.length);
 
-        if (body.signature && buildPfSignature(body, passphrase) !== body.signature) {
-            console.warn('[ITN] Invalid signature — received:', body.signature, '| expected:', buildPfSignature(body, passphrase));
+        // For per-payment ITN, PayFast includes ALL fields (even empty strings) in the signature.
+        // Do NOT filter empty values here — only exclude 'signature' itself and null/undefined.
+        const itnSigStr = Object.entries(body)
+            .filter(([k, v]) => k !== 'signature' && v != null)
+            .map(([k, v]) => `${phpUrlencode(k)}=${phpUrlencode(String(v).trim())}`)
+            .join('&');
+        const itnSigFull = passphrase ? `${itnSigStr}&passphrase=${phpUrlencode(passphrase.trim())}` : itnSigStr;
+        const expectedSig = crypto.createHash('md5').update(itnSigFull).digest('hex');
+
+        if (body.signature && expectedSig !== body.signature) {
+            console.warn('[ITN] Invalid signature — received:', body.signature, '| expected:', expectedSig);
             return res.status(200).send('OK');
         }
 
