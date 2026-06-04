@@ -75,8 +75,14 @@ function requireAdminKey(req, res, next) {
 // Token format validator (32 hex chars only)
 const HEX_32 = /^[0-9a-f]{32}$/;
 
-// Supabase client — set SUPABASE_URL2 and SUPABASE_ANON_KEY2 in Render env vars
+// Supabase client (Buffalo project) — payment_links, dikarata, etc.
 const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+);
+
+// Supabase client (shared/overkill project) — customer_payment_tokens
+const supabase2 = createClient(
     process.env.SUPABASE_URL2,
     process.env.SUPABASE_ANON_KEY2
 );
@@ -345,7 +351,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
     // Save/upsert PayFast card token
     if (token && email_address && payment_status === 'COMPLETE') {
         const email = email_address.toLowerCase().trim();
-        const { error: tokenErr } = await supabase
+        const { error: tokenErr } = await supabase2
             .from('customer_payment_tokens')
             .upsert({ email, payfast_token: token, is_default: true }, { onConflict: 'email' });
         if (tokenErr) {
@@ -361,7 +367,7 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 // ── GET /api/saved-tokens ──────────────────────────────────────────
 // Admin: list all saved PayFast tokens (requires X-Admin-Key header)
 app.get('/api/saved-tokens', requireAdminKey, async (req, res) => {
-    const { data, error } = await supabase
+    const { data, error } = await supabase2
         .from('customer_payment_tokens')
         .select('id, email, is_default, created_at, updated_at')
         .order('created_at', { ascending: false });
@@ -381,7 +387,7 @@ app.post('/api/payfast-charge', requireAdminKey, async (req, res) => {
     if (isNaN(parsed) || parsed <= 0)
         return res.status(400).json({ error: 'Invalid amount' });
 
-    const { data: rows, error } = await supabase
+    const { data: rows, error } = await supabase2
         .from('customer_payment_tokens')
         .select('payfast_token, email')
         .eq('id', token_id)
