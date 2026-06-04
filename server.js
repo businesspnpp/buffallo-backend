@@ -41,6 +41,9 @@ function buildApiSignature(params) {
     return crypto.createHash('md5').update(str).digest('hex');
 }
 
+// Trust Render's proxy so rate-limiter and IP headers work correctly
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 
@@ -327,8 +330,15 @@ app.post('/api/payfast-notify', express.urlencoded({ extended: false }), async (
 
         console.log('[ITN] received | ip:', req.headers['x-forwarded-for'] || 'unknown', '| keys:', Object.keys(body).join(','));
 
+        // Debug: show which fields are included in sig and whether passphrase is set
+        const sigFields = Object.entries(body)
+            .filter(([k, v]) => k !== 'signature' && v != null && String(v).trim() !== '')
+            .map(([k]) => k);
+        console.log('[ITN] sig fields:', sigFields.join(','));
+        console.log('[ITN] passphrase set:', !!passphrase, '| len:', passphrase.length);
+
         if (body.signature && buildPfSignature(body, passphrase) !== body.signature) {
-            console.warn('[ITN] Invalid signature');
+            console.warn('[ITN] Invalid signature — received:', body.signature, '| expected:', buildPfSignature(body, passphrase));
             return res.status(200).send('OK');
         }
 
